@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/url"
+	"os/exec"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -13,6 +14,32 @@ import (
 // This is a basic, no-op bot that starts a game against a built-in AI and
 // runs until the game finishes, then sends a leave.
 func main() {
+	// Launch sc2
+	game := exec.Command(`..\Versions\Base55958\SC2_x64.exe`,
+		"-listen", "127.0.0.1",
+		"-port", "8888",
+		"-displayMode", "0",
+	)
+	game.Dir = `E:\StarCraft II\Support64`
+	go func() {
+		err := game.Run()
+		if err != nil {
+			log.Fatalf("error launching game: %v", err)
+		}
+	}()
+	defer game.Process.Kill()
+	time.Sleep(5 * time.Second)
+
+	// Connect to sc2
+	u := url.URL{Scheme: "ws", Host: "localhost:8888", Path: "/sc2api"}
+	log.Printf("connecting to %s", u.String())
+
+	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		log.Fatal("dial:", err)
+	}
+	defer conn.Close()
+
 	// Make a CreateGame request
 	r := &sc2api.Request{Request: &sc2api.Request_CreateGame{CreateGame: &sc2api.RequestCreateGame{}}}
 	req := r.GetCreateGame()
@@ -31,16 +58,6 @@ func main() {
 	}
 
 	req.PlayerSetup = []*sc2api.PlayerSetup{us, opponent}
-
-	// Connect to sc2
-	u := url.URL{Scheme: "ws", Host: "localhost:8888", Path: "/sc2api"}
-	log.Printf("connecting to %s", u.String())
-
-	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-	if err != nil {
-		log.Fatal("dial:", err)
-	}
-	defer conn.Close()
 
 	// Send the create game request
 	sendMessage(r, conn)
