@@ -85,9 +85,33 @@ func main() {
 		resp := decodeResponse(conn)
 
 		// If the game ended, break out
-		if len(resp.GetObservation().PlayerResult) > 0 {
+		obs := resp.GetObservation()
+		if len(obs.PlayerResult) > 0 {
 			break
 		}
+
+		// If a command center is idle, build an SCV
+		actionReq := &sc2api.Request{Request: &sc2api.Request_Action{Action: &sc2api.RequestAction{}}}
+		action := actionReq.GetAction()
+		for _, unit := range obs.Observation.RawData.Units {
+			if *unit.UnitType == 18 {
+				if len(unit.Orders) == 0 {
+					command := &sc2api.ActionRaw_UnitCommand{
+						UnitCommand: &sc2api.ActionRawUnitCommand{
+							AbilityId: proto.Int32(524),
+							UnitTags:  []uint64{*unit.Tag},
+						},
+					}
+					a := &sc2api.Action{ActionRaw: &sc2api.ActionRaw{Action: command}}
+					action.Actions = append(action.Actions, a)
+					log.Println("queueing up SCV")
+				}
+			}
+		}
+		sendMessage(actionReq, conn)
+		resp = decodeResponse(conn)
+
+		//log.Printf("action response: %v, %v", resp, resp.Response)
 
 		/*
 		// Advance the game by a step
